@@ -168,7 +168,7 @@ def save_thumbnails(
       # 保存先のファイルパスを取得
       if file_name_option == FileNameOptions.MOVIE_TITLE:
         file_name = f"{title}{ext}"
-        file_name = re.sub(r'[\\|/|:|?|"|<|>|\|]', '_', file_name)  # 違反文字を_に置換
+        file_name = re.sub(r'[\\|/|:|?|*|"|<|>|\|]', '_', file_name)  # 違反文字を_に置換
         path = os.path.join(out_dir, file_name)
         path = get_unduplicate_path(path)
         
