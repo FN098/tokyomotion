@@ -21,6 +21,10 @@ SEARCH_URL = "https://www.tokyomotion.net/search?search_query={}&search_type=vid
 THUMBNAIL_URL = "https://cdn.tokyo-motion.net/media/videos"
 
 
+# 現在のサムネイル画像番号
+g_file_index = 1
+
+
 class LogLebel:
     INFO = "INFO"
     WARNING = "WARNING"
@@ -32,7 +36,7 @@ class Log:
 
     @classmethod
     def open(cls, file):
-      cls._file = open(file, "w", encoding="utf-8")
+      cls._file = open(file, mode="w", encoding="utf-8")
 
     @classmethod
     def close(cls):
@@ -43,6 +47,7 @@ class Log:
       message = f"[{dt.now()}:{level}] {object}" + "\n"
       if cls._file:
         cls._file.write(message)
+        cls._file.flush()
       else:
         print(message)
 
@@ -95,7 +100,6 @@ def download_file(url: str, path: str) -> None:
   image = Image.open(bytes)
   image.save(path)
 
-
 def save_thumbnails(
         driver: webdriver.Chrome,
         url: str,
@@ -118,7 +122,7 @@ def save_thumbnails(
 
   # HTMLを取得
   try:
-    Log.print(f"GET [{url}]", LogLebel.INFO)
+    Log.print(f"GET \"{url}\"", LogLebel.INFO)
     sleep(0.2)  # 403対策
     driver.get(url)
     WebDriverWait(driver, 3).until(EC.presence_of_all_elements_located)
@@ -148,17 +152,17 @@ def save_thumbnails(
       link = img.find_element(By.XPATH, '../..').get_attribute('href')
 
       # 保存先のファイルパスを取得
-      file_name = title + ext
-      file_name = re.sub(r'[\\|/|:|?|"|<|>|\|]', '_', file_name)  # 違反文字を_に置換
+      global g_file_index
+      file_name = f"{g_file_index}{ext}"
       path = os.path.join(out_dir, file_name)
-      path = get_unduplicate_path(path)
 
       # 画像をダウンロード
-      Log.print(f"GET [{url}]", LogLebel.INFO)
+      Log.print(f"GET \"{url}\"", LogLebel.INFO)
       try:
         sleep(0.2)  # 403対策
         download_file(url, path)
-        Log.print(f"SAVE [{path}]({link})", LogLebel.INFO)
+        Log.print(f"SAVE \"{path}\" [{title}]({link})", LogLebel.INFO)
+        g_file_index += 1
       except Exception as e:
         Log.print(e, LogLebel.ERROR)
 
@@ -180,7 +184,7 @@ def get_page_list(driver: webdriver.Chrome, url: str) -> list:
 
   # HTMLを取得
   try:
-    Log.print(f"GET [{url}]", LogLebel.INFO)
+    Log.print(f"GET \"{url}\"", LogLebel.INFO)
     sleep(0.2)  # 403対策
     driver.get(url)
     WebDriverWait(driver, 3).until(EC.presence_of_all_elements_located)
