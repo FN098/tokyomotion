@@ -55,6 +55,8 @@ def get_unduplicate_path(src_path: str) -> str:
 
       else:
           return dst_path
+    
+    raise Exception("適切なパス名を取得できません")
 
 
 def download_image(src_url: str, dst_path: str, error_urls: list = []) -> None:
