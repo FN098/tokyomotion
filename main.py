@@ -237,8 +237,8 @@ def main(args) -> None:
       ]})
 
   # 開始ページ番号と終了ページ番号を取得
-  first_page = args.first_page
-  last_page = args.last_page
+  first_page = int(args.first_page)
+  last_page = int(args.last_page)
 
   # 画像の出力先フォルダを作成
   today = dt.today().strftime('%Y-%m-%d')
