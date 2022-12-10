@@ -231,7 +231,7 @@ def main(args) -> None:
   last_page = max(page_list)
 
   # すべてのページのサムネイル画像を保存する
-  for page in range(first_page, 1 + 1):
+  for page in range(first_page, last_page + 1):
     page_url = base_url + f"&page={page}"
     save_thumbnails(driver, page_url, out_dir, THUMBNAIL_URL)
 
