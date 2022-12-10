@@ -227,7 +227,7 @@ def get_page_list(driver: webdriver.Chrome, src_url: str) -> list:
 def main(args) -> None:
   # 引数パラメータを取得
   query = args.query
-  save_screenshot = args["save-screenshot"]
+  save_screenshot = args.save_screenshot
 
   # ベースとなるURLを生成
   base_url = SEARCH_URL.format(query)
