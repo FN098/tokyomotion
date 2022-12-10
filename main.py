@@ -24,11 +24,22 @@ THUMBNAIL_URL = "https://cdn.tokyo-motion.net/media/videos"
 # 現在のサムネイル画像番号
 g_file_index = 1
 
+# 保存を試みたファイル総数
+g_total_count = 0
+
+# 保存したファイル数
+g_saved_count = 0
+
 
 class LogLebel:
     INFO = "INFO"
     WARNING = "WARNING"
     ERROR = "ERROR"
+
+
+class FileNameOptions:
+    SERIAL_NUMBER = 1   # 連番
+    MOVIE_TITLE = 2   # 動画タイトル
 
 
 class Log:
@@ -104,7 +115,8 @@ def save_thumbnails(
         driver: webdriver.Chrome,
         url: str,
         out_dir: str,
-        thumb_url: str = '') -> None:
+        thumb_url: str = '',
+        file_name_option: int = 1) -> None:
   """Webページ上のサムネイル画像を保存する
   -----
   driver
@@ -119,6 +131,8 @@ def save_thumbnails(
   thumb_url
     サムネイル画像URLの正規表現パターン
   """
+
+  global g_file_index, g_total_count, g_saved_count
 
   # HTMLを取得
   try:
@@ -152,17 +166,26 @@ def save_thumbnails(
       link = img.find_element(By.XPATH, '../..').get_attribute('href')
 
       # 保存先のファイルパスを取得
-      global g_file_index
-      file_name = f"{g_file_index}{ext}"
-      path = os.path.join(out_dir, file_name)
+      if file_name_option == FileNameOptions.MOVIE_TITLE:
+        file_name = f"{title}{ext}"
+        file_name = re.sub(r'[\\|/|:|?|"|<|>|\|]', '_', file_name)  # 違反文字を_に置換
+        path = os.path.join(out_dir, file_name)
+        path = get_unduplicate_path(path)
+        
+      else:
+        file_name = f"{g_file_index}{ext}"
+        path = os.path.join(out_dir, file_name)
+        path = get_unduplicate_path(path)
 
       # 画像をダウンロード
       Log.print(f"GET \"{url}\"", LogLebel.INFO)
+      g_total_count += 1
       try:
         sleep(0.2)  # 403対策
         download_file(url, path)
         Log.print(f"SAVE \"{path}\" [{title}]({link})", LogLebel.INFO)
         g_file_index += 1
+        g_saved_count += 1
       except Exception as e:
         Log.print(e, LogLebel.ERROR)
 
@@ -180,7 +203,7 @@ def get_page_list(driver: webdriver.Chrome, url: str) -> list:
     ページ番号のリスト
   """
 
-  page_list = []
+  page_list: list = []
 
   # HTMLを取得
   try:
@@ -204,6 +227,11 @@ def get_page_list(driver: webdriver.Chrome, url: str) -> list:
 
 
 def main(args) -> None:
+  query = args.query
+  start_page = int(args.start_page)
+  end_page = int(args.end_page)
+  file_name_option = int(args.file_name_option)
+
   # Chrome起動オプション
   options = Options()
   options.add_argument('--headless')  # ウィンドウ非表示
@@ -220,7 +248,7 @@ def main(args) -> None:
 
   # 出力先フォルダを作成
   today = dt.today().strftime('%Y-%m-%d')
-  out_dir = os.path.join("out", today, args.query)
+  out_dir = os.path.join("out", today, f"{query}_{start_page}_{end_page}")
   if (not os.path.exists(out_dir)):
     os.makedirs(out_dir)
 
@@ -228,21 +256,23 @@ def main(args) -> None:
   log_file = os.path.join(out_dir, "download.log")
   Log.open(log_file)
 
-  # 開始ページ番号と終了ページ番号を取得
-  base_url = SEARCH_URL.format(args.query)
-  page_list = get_page_list(driver, base_url)
-  first_page = min(page_list)
-  last_page = max(page_list)
-
   # すべてのページのサムネイル画像を保存する
-  for page in range(first_page, last_page + 1):
+  base_url = SEARCH_URL.format(args.query)
+  for page in range(start_page, end_page + 1):
     page_url = base_url + f"&page={page}"
-    save_thumbnails(driver, page_url, out_dir, THUMBNAIL_URL)
+    save_thumbnails(driver, page_url, out_dir, THUMBNAIL_URL, file_name_option)
+
+  # ログファイルクローズ
+  Log.print(f"done ({g_saved_count} of {g_total_count})")
+  Log.close()
 
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(
       description="TOKYO Motionのサムネイル画像をダウンロードします")
   parser.add_argument("-q", "--query", required=True, help="検索文字列")
+  parser.add_argument("-f", "--file-name-option", help="ファイル名オプション (1:連番(default), 2:動画タイトル)", default=1)
+  parser.add_argument("-s", "--start-page", help="開始ページ番号", default=1)
+  parser.add_argument("-e", "--end-page", help="終了ページ番号", default=1)
   args = parser.parse_args()
   main(args)
