@@ -5,13 +5,13 @@
 画像を直接ダウンロード（推奨）
 
 ```sh
-python main.py -q ライブチャット --first-page 1 --last-page 30
+python main.py -q ライブチャット
 ```
 
 スクリーンショットを保存
 
 ```sh
-python main.py -q ライブチャット --first-page 1 --last-page 30 --save-screenshot
+python main.py -q ライブチャット --save-screenshot
 ```
 
 ## 参考
