@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 from datetime import datetime as dt
 import os
 import re
@@ -17,31 +20,26 @@ THUMBNAIL_URL = "https://cdn.tokyo-motion.net/media/videos"
 
 
 class LogLebel:
-    """ログレベル
-    """
     INFO = "INFO"
     WARNING = "WARNING"
     ERROR = "ERROR"
 
 
 def print_log(message: str, level: str) -> None:
-    """ログを出力
-    """
     print(f"[{dt.now()}:{level}] {message}")
 
 
-def get_unduplicate_path(src_path: str) -> str:
+def get_unduplicate_path(path: str) -> str:
     """重複しないパス名を取得
     ---
-    src_path: str
+    path
       元になるパス名
 
-    return: str
-      重複しないパス名
-      重複を検出した場合は末尾に数字が付きます
+    return
+      重複しなかった場合は元のパス名、重複した場合は末尾に(数字)が付いたパス名
     """
     
-    dst_path = src_path
+    dst_path = path
     for i in range(9999):
       if os.path.exists(dst_path):
           # フルパスから「フルパスタイトル」と「拡張子」を分割
@@ -59,180 +57,153 @@ def get_unduplicate_path(src_path: str) -> str:
     raise Exception("適切なパス名を取得できません")
 
 
-def download_image(src_url: str, dst_path: str, error_urls: list = []) -> None:
-  """画像ファイルをダウンロードする
+def download_file(url: str, path: str) -> bool:
+  """ファイルをダウンロードする
   -----
-  src_url: str
-    ダウンロード先の画像のURL
+  url
+    ファイルのURL
   
-  dst_path: str
+  path
     保存先のパス名
 
-  error_urls: list = []
-    ダウンロードに失敗した画像のURLリスト
+  return
+    True: 成功
+    False: 失敗
   """
 
-  # 画像を取得
+  # ファイルをダウンロード
   try:
-    sleep(0.2)  # 403 Forbidden対策
-    response = requests.get(src_url)
-    print_log(f"GET [{src_url}]", LogLebel.INFO)
+    sleep(0.2)  # 403対策
+    response = requests.get(url)
+    print_log(f"GET [{url}]", LogLebel.INFO)
 
   except:
-    print_log(f"GET FAILED [{src_url}]", LogLebel.ERROR)
-    error_urls.append(src_url)
-    return
+    print_log(f"GET FAILED [{url}]", LogLebel.ERROR)
+    return False
 
-  # 取得失敗
   if not response.ok:
     print_log(f"BAD STATUS [{response.status_code}]", LogLebel.WARNING)
-    error_urls.append(src_url)
-    return
+    return False
 
-  # 画像を保存
+  # ファイルを保存
   try:
     bytes = io.BytesIO(response.content)
     image = Image.open(bytes)
-    image.save(dst_path)
-    print_log(f"SAVE [{dst_path}]", LogLebel.INFO)
+    image.save(path)
+    print_log(f"SAVE [{path}]", LogLebel.INFO)
 
   except:
     print_log(f"IO ERROR", LogLebel.ERROR)
-    error_urls.append(src_url)
-    return
+    return False
+  
+  return True
 
 
-def save_screenshot_image(element: WebElement, dst_path: str) -> None:
-  """Web要素のスクリーンショットを保存する
-  ---
-  element: 
-    スクリーンショットを取得するWeb要素
+class Result:
+  def __init__(self):
+    self._titles = {}
+    self._done = {}
 
-  dst_path: str
-    保存先のパス名
-  """
-  # 画像を保存
-  try:
-    with open(dst_path, "wb") as f:
-      f.write(element.screenshot_as_png)
-    print_log(f"SAVE [{dst_path}]", LogLebel.INFO)
+  @property
+  def urls(self):
+    return self._titles.keys()
 
-  except:
-    print_log(f"IO ERROR", LogLebel.ERROR)
+  def save(self, path: str):
+    lines = []
+    lines.append("done, url, title\n")
+    for url in self.urls:
+      title = self.title(url)
+      done = self.done(url)
+      line = f"{done}, {url}, {title}\n"
+      lines.append(line)
+    with open(path, 'w', encoding='utf-8') as f:
+      f.writelines(lines)
+
+  def fail(self, url, title):
+    self._titles[url] = title
+    self._done[url] = False
+
+  def success(self, url, title):
+    self._titles[url] = title
+    self._done[url] = True
+
+  def title(self, url):
+    return self._titles[url]
+
+  def done(self, url):
+    return self._done[url]
 
 
 def save_thumbnails(
   driver: webdriver.Chrome,
-  src_url: str,
+  url: str,
   out_dir: str,
-  thumb_url: str = '',
-  save_screenshot: bool = False,
-  error_urls: list = []) -> None:
+  thumb_url: str = '') -> Result:
   """Webページ上のサムネイル画像を保存する
   -----
-  driver: webdriver.Chrome
+  driver
     seleniumのChromeドライバ
 
-  src_url: str
+  url
     WebページのURL
   
-  out_dir: str
-    画像ファイル保存先のディレクトリパス名
+  out_dir
+    保存先のディレクトリ名
 
-  thumb_url: str = ''
-    サムネイル画像のURLを判定する正規表現パターン
+  thumb_url
+    サムネイル画像URLの正規表現パターン
 
-  save_screenshot: bool = True
-    スクリーンショットを保存
-    または
-    オリジナルの画像をダウンロード
-
-  error_urls: list = []
-    ダウンロードに失敗した画像のURLリスト
+  return
+    ダウンロード結果
   """
 
-  # HTMLの取得
+  result = Result()
+
+  # HTMLを取得
   try:
     sleep(1)  # 403 Forbidden対策
-    driver.get(src_url)
-    print_log(f"GET [{src_url}]", LogLebel.INFO)
+    driver.get(url)
+    print_log(f"GET [{url}]", LogLebel.INFO)
 
   except:
-    print_log(f"GET FAILED [{src_url}]", LogLebel.ERROR)
-    return
+    print_log(f"GET FAILED [{url}]", LogLebel.ERROR)
+    return result
     
 
   # img要素を取得
   img_list = driver.find_elements(By.TAG_NAME, 'img')
 
   for img in img_list:
-      # src属性を取得
-      src_url = img.get_attribute('src')
+      # 画像URLを取得
+      url = img.get_attribute('src')
 
-      # src属性が存在しない、または目的のURLでなければスキップ
-      if (not src_url) or (thumb_url and not re.match(thumb_url, src_url)):
+      # 画像URLが存在しない、または目的のURLでなければスキップ
+      if (not url) or (thumb_url and not re.match(thumb_url, url)):
         continue
 
       # 保存先のファイルパスを取得
-      _, ext = os.path.splitext(src_url)
-      dst_path = os.path.join(out_dir, f"{img.accessible_name}{ext}")
-      dst_path = get_unduplicate_path(dst_path)
+      title = img.accessible_name
+      _, ext = os.path.splitext(url)
+      file_name = title + ext
+      file_name = re.sub(r'[\\|/|:|?|"|<|>|\|]', '_', file_name) # 違反文字を_に置換
+      path = os.path.join(out_dir, file_name)
+      path = get_unduplicate_path(path)
 
-      # 画像を保存
-      if save_screenshot:
-        save_screenshot_image(img, dst_path)
+      # 画像をダウンロード
+      ok = download_file(url, path)
+
+      # 結果を登録
+      if ok:
+        result.success(url, title)
       else:
-        download_image(src_url, dst_path, error_urls)
+        result.fail(url, title)
 
-
-def get_page_list(driver: webdriver.Chrome, src_url: str) -> list:
-  """ページネーションされたページ番号のリストを取得する
-  ---
-  driver: webdriver.Chrome
-    seleniumのChromeドライバ
-
-  src_url: str
-    ページ番号を取得するWebページのURL
-
-  return: list
-    ページ番号のリスト
-  """
-
-  # HTMLの取得
-  try:
-    driver.get(src_url)
-    print_log(f"GET [{src_url}]", LogLebel.INFO)
-
-  except:
-    print_log(f"GET FAILED [{src_url}]", LogLebel.ERROR)
-    return []
-
-  # paginationクラス要素を取得
-  pagination = driver.find_element(By.CLASS_NAME, 'pagination')
-  li_list = pagination.find_elements(By.TAG_NAME, 'li')
-
-  # ページ番号のリストを生成
-  page_list = []
-  for li in li_list:
-      innerText = li.get_attribute("innerText")
-
-      try:
-        page = int(innerText)
-        page_list.append(page)
-
-      except:
-        continue
-
-  return page_list
+  return result
 
 
 def main(args) -> None:
-  # 引数パラメータを取得
-  query = args.query
-  save_screenshot = args.save_screenshot
-
   # ベースとなるURLを生成
-  base_url = SEARCH_URL.format(query)
+  base_url = SEARCH_URL.format(args.query)
 
   # Chrome起動オプション
   options = Options()
@@ -249,39 +220,42 @@ def main(args) -> None:
       ]})
 
   # 開始ページ番号と終了ページ番号を取得
-  page_list = get_page_list(driver, base_url)
-  if len(page_list) > 0:
-    (first_page, last_page) = (min(page_list), max(page_list))
-  else:
-    (first_page, last_page) = (0, 0)
+  first_page = args.first_page
+  last_page = args.last_page
 
   # 画像の出力先フォルダを作成
   today = dt.today().strftime('%Y-%m-%d')
-  out_dir = os.path.join("out", query, today,
+  out_dir = os.path.join("out", args.query, today,
                          f"page.{first_page}-{last_page}")
   if (not os.path.exists(out_dir)):
     os.makedirs(out_dir)
 
   # すべてのページのサムネイル画像を保存する
-  error_urls = []
   for page in range(first_page, last_page + 1):
-    src_url = base_url + f"&page={page}"
-    save_thumbnails(driver, src_url, out_dir, THUMBNAIL_URL, save_screenshot, error_urls)
+    page_url = base_url + f"&page={page}"
+    result = save_thumbnails(driver, page_url, out_dir, THUMBNAIL_URL)
 
   # ダウンロードに失敗した画像を再度ダウンロード
-  error_urls_to_save = []
-  for error_url in error_urls:
-    save_thumbnails(driver, error_url, out_dir, THUMBNAIL_URL, save_screenshot, error_urls_to_save)
+  for url in result.urls:
+    if (result.done(url)):
+      continue
+    title = result.title(url)
+    _, ext = os.path.splitext(url)
+    file_name = title + ext
+    file_name = re.sub(r'[\\|/|:|?|"|<|>|\|]', '_', file_name) # 違反文字を_に置換
+    path = os.path.join(out_dir, file_name)
+    path = get_unduplicate_path(path)
+    if download_file(url, path):
+      result.success(url, title)
 
-  # ２回目もダウンロードに失敗したURLをテキストファイルに保存
-  text_file = os.path.join(out_dir, "error_urls.txt")
-  with open(text_file, 'w') as f:
-    f.writelines([f"{url}\n" for url in error_urls_to_save])
+  # ダウンロード結果をファイルに保存
+  result.save(os.path.join(out_dir, "result.csv"))
 
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description="TOKYO Motionのサムネイル画像をダウンロードします")
-  parser.add_argument("-q", "--query", required=True, help="動画の検索文字列を入力します")
-  parser.add_argument("--save-screenshot", action="store_true", help="サムネイル画像のスクリーンショットを保存します")
+  parser.add_argument("-q", "--query", required=True, help="動画の検索文字列を指定します")
+  parser.add_argument("--first-page", help="最初のページ番号を指定します", default=1)
+  parser.add_argument("--last-page", help="最後のページ番号を指定します", default=1)
   args = parser.parse_args()
   main(args)
