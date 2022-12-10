@@ -7,7 +7,9 @@ import re
 from time import sleep
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 import requests
 import io
 from PIL import Image
@@ -116,11 +118,12 @@ def save_thumbnails(
 
   # HTMLを取得
   try:
-    sleep(1)  # 403対策
     Log.print(f"GET [{url}]", LogLebel.INFO)
+    sleep(0.2)  # 403対策
     driver.get(url)
+    WebDriverWait(driver, 3).until(EC.presence_of_all_elements_located)
 
-  except Exception as e:
+  except TimeoutException as e:
     Log.print(e, LogLebel.ERROR)
     return
 
@@ -151,9 +154,9 @@ def save_thumbnails(
       path = get_unduplicate_path(path)
 
       # 画像をダウンロード
-      sleep(0.2)  # 403対策
       Log.print(f"GET [{url}]", LogLebel.INFO)
       try:
+        sleep(0.2)  # 403対策
         download_file(url, path)
         Log.print(f"SAVE [{path}]({link})", LogLebel.INFO)
       except Exception as e:
@@ -173,23 +176,26 @@ def get_page_list(driver: webdriver.Chrome, url: str) -> list:
     ページ番号のリスト
   """
 
+  page_list = []
+
   # HTMLを取得
   try:
-    sleep(1)  # 403対策
     Log.print(f"GET [{url}]", LogLebel.INFO)
+    sleep(0.2)  # 403対策
     driver.get(url)
+    WebDriverWait(driver, 3).until(EC.presence_of_all_elements_located)
 
-  except Exception as e:
+  except TimeoutException as e:
     Log.print(e, LogLebel.ERROR)
-    return []
+    return page_list
 
-  # ページ番号のリストを生成
-  page_list = []
+  # ページ番号を追加
   li_list = driver.find_element(By.CLASS_NAME, 'pagination').find_elements(By.TAG_NAME, 'li')
   for li in li_list:
       innerText = li.get_attribute("innerText")
       if innerText.isdecimal():
         page_list.append(int(innerText))
+        
   return page_list
 
 
