@@ -101,37 +101,47 @@ def download_file(url: str, path: str) -> bool:
 
 class Result:
   def __init__(self):
-    self._titles = {}
+    self._title = {}
+    self._link = {}
     self._done = {}
+    self._path = {}
 
   @property
   def urls(self):
-    return self._titles.keys()
+    return self._title.keys()
 
-  def save(self, path: str):
-    lines = []
-    lines.append("done, url, title\n")
-    for url in self.urls:
-      title = self.title(url)
-      done = self.done(url)
-      line = f"{done}, {url}, {title}\n"
-      lines.append(line)
-    with open(path, 'w', encoding='utf-8') as f:
-      f.writelines(lines)
-
-  def fail(self, url, title):
-    self._titles[url] = title
+  def fail(self, url, title, link, path):
+    self._title[url] = title
     self._done[url] = False
+    self._link[url] = link
+    self._path[url] = path
 
-  def success(self, url, title):
-    self._titles[url] = title
+  def success(self, url, title, link, path):
+    self._title[url] = title
     self._done[url] = True
+    self._link[url] = link
+    self._path[url] = path
 
   def title(self, url):
-    return self._titles[url]
+    return self._title[url]
 
   def done(self, url):
     return self._done[url]
+
+  def link(self, url):
+    return self._link[url]
+
+  def path(self, url):
+    return self._path[url]
+
+  def save(self, path: str):
+    lines = []
+    lines.append("url, title, link, path, done\n")
+    for url in self.urls:
+      line = f"{url}, {self.title(url)}, {self.link(url)}, {self.path(url)}, {self.done(url)}\n"
+      lines.append(line)
+    with open(path, 'w', encoding='utf-8') as f:
+      f.writelines(lines)
 
 
 def save_thumbnails(
@@ -174,16 +184,23 @@ def save_thumbnails(
   img_list = driver.find_elements(By.TAG_NAME, 'img')
 
   for img in img_list:
-      # 画像URLを取得
+      # 画像URL
       url = img.get_attribute('src')
 
       # 画像URLが存在しない、または目的のURLでなければスキップ
       if (not url) or (thumb_url and not re.match(thumb_url, url)):
         continue
 
-      # 保存先のファイルパスを取得
-      title = img.accessible_name
+      # 画像ファイル拡張子
       _, ext = os.path.splitext(url)
+
+      # 動画タイトル
+      title = img.get_attribute('title')
+      
+      # 動画リンク
+      link = img.find_element(By.XPATH, '../..').get_attribute('href')
+
+      # 保存先のファイルパスを取得
       file_name = title + ext
       file_name = re.sub(r'[\\|/|:|?|"|<|>|\|]', '_', file_name) # 違反文字を_に置換
       path = os.path.join(out_dir, file_name)
@@ -194,9 +211,9 @@ def save_thumbnails(
 
       # 結果を登録
       if ok:
-        result.success(url, title)
+        result.success(url, title, link, path)
       else:
-        result.fail(url, title)
+        result.fail(url, title, link, path)
 
   return result
 
@@ -246,7 +263,7 @@ def main(args) -> None:
     path = os.path.join(out_dir, file_name)
     path = get_unduplicate_path(path)
     if download_file(url, path):
-      result.success(url, title)
+      result.success(url, title, result.link[url], path)
 
   # ダウンロード結果をファイルに保存
   result.save(os.path.join(out_dir, "result.csv"))
