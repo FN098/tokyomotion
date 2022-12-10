@@ -1,23 +1,17 @@
 # TOKYO Motion - 動画サムネイル画像一括保存ツール
 
-## launch.json
+## 使い方
 
-```json
-{
-  "version": "0.2.0",
-  "configurations": [
-  
-    {
-      "name": "サムネ一括保存",
-      "type": "python",
-      "request": "launch",
-      "program": "${workspaceFolder}/main.py",
-      "args": ["-q", "ライブチャット"],
-      "console": "integratedTerminal",
-      "justMyCode": true
-    }
-  ]
-}
+画像を直接ダウンロード（推奨）
+
+```sh
+python main.py -q ライブチャット
+```
+
+スクリーンショットを保存
+
+```sh
+python main.py -q ライブチャット --save-screenshot
 ```
 
 ## 参考
