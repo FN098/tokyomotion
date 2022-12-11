@@ -13,12 +13,13 @@ from selenium.common.exceptions import TimeoutException
 import requests
 import io
 from PIL import Image
-from selenium.webdriver.chrome.options import Options
 import argparse
 
 
 SEARCH_URL = "https://www.tokyomotion.net/search?search_query={}&search_type=videos&type=public"
 THUMBNAIL_URL = "https://cdn.tokyo-motion.net/media/videos"
+LOG_FILE_NAME = "download.log"
+U_BLOCK_ORIGIN_PATH = os.path.join(os.getenv('LOCALAPPDATA'), r"Google\Chrome\User Data\Profile 1\Extensions\cjpalhdlnbpafiamejdnhcphjbkeiagm\1.45.2_0") 
 
 
 # 現在のサムネイル画像番号
@@ -48,6 +49,7 @@ class Log:
     @classmethod
     def open(cls, file):
       cls._file = open(file, mode="w", encoding="utf-8")
+      print(f'create "{file}"')
 
     @classmethod
     def close(cls):
@@ -227,24 +229,22 @@ def get_page_list(driver: webdriver.Chrome, url: str) -> list:
 
 
 def main(args) -> None:
+  # コマンドライン引数
   query = args.query
   start_page = int(args.start_page)
   end_page = int(args.end_page)
   file_name_option = int(args.file_name_option)
 
   # Chrome起動オプション
-  options = Options()
-  options.add_argument('--headless')  # ウィンドウ非表示
+  options = webdriver.ChromeOptions()
+  # options.add_argument('--headless')  # ウィンドウ非表示
+  options.page_load_strategy = "eager"  # DOMを読み込んだら即続行
+
+  # uBlock Origin拡張機能
+  options.add_argument(f'load-extension={U_BLOCK_ORIGIN_PATH}')
 
   # Chrome起動
   driver = webdriver.Chrome(options=options)
-
-  # 広告ブロック
-  driver.execute_cdp_cmd('Network.enable', {})
-  driver.execute_cdp_cmd('Network.setBlockedURLs', {
-      'urls': [
-          'js.juicyads.com'
-      ]})
 
   # 出力先フォルダを作成
   today = dt.today().strftime('%Y-%m-%d')
@@ -253,7 +253,7 @@ def main(args) -> None:
     os.makedirs(out_dir)
 
   # ログファイルオープン
-  log_file = os.path.join(out_dir, "download.log")
+  log_file = os.path.join(out_dir, LOG_FILE_NAME)
   Log.open(log_file)
 
   # すべてのページのサムネイル画像を保存する
@@ -262,9 +262,16 @@ def main(args) -> None:
     page_url = base_url + f"&page={page}"
     save_thumbnails(driver, page_url, out_dir, THUMBNAIL_URL, file_name_option)
 
+  # Chrome終了
+  driver.quit()
+
   # ログファイルクローズ
   Log.print(f"done ({g_saved_count} of {g_total_count})")
   Log.close()
+
+  # 終了
+  print("done!")
+  return
 
 
 if __name__ == "__main__":
