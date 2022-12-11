@@ -8,12 +8,6 @@
 python main.py -q ライブチャット
 ```
 
-スクリーンショットを保存
-
-```sh
-python main.py -q ライブチャット --save-screenshot
-```
-
 ## 参考
 
 [【Python3】Seleniumで画像を保存する方法](https://senablog.com/python-selenium-image-save/)

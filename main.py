@@ -16,10 +16,11 @@ from PIL import Image
 import argparse
 
 
-SEARCH_URL = "https://www.tokyomotion.net/search?search_query={}&search_type=videos&type=public"
+BASE_URL = "https://www.tokyomotion.net/search?search_type=videos&type=public"
 THUMBNAIL_URL = "https://cdn.tokyo-motion.net/media/videos"
 LOG_FILE_NAME = "download.log"
-U_BLOCK_ORIGIN_PATH = os.path.join(os.getenv('LOCALAPPDATA'), r"Google\Chrome\User Data\Profile 1\Extensions\cjpalhdlnbpafiamejdnhcphjbkeiagm\1.45.2_0") 
+U_BLOCK_ORIGIN_PATH = os.path.join(os.getenv(
+    'LOCALAPPDATA'), r"Google\Chrome\User Data\Profile 1\Extensions\cjpalhdlnbpafiamejdnhcphjbkeiagm\1.45.2_0")
 
 
 # 現在のサムネイル画像番号
@@ -38,11 +39,6 @@ class LogLebel:
     ERROR = "ERROR"
 
 
-class FileNameOptions:
-    SERIAL_NUMBER = 1   # 連番
-    MOVIE_TITLE = 2   # 動画タイトル
-
-
 class Log:
     _file = None
 
@@ -55,7 +51,7 @@ class Log:
       cls._file.close()
 
     @classmethod
-    def print(cls, object, level = LogLebel.INFO):
+    def print(cls, object, level=LogLebel.INFO):
       message = f"[{dt.now()}:{level}] {object}" + "\n"
       if cls._file:
         cls._file.write(message)
@@ -112,12 +108,13 @@ def download_file(url: str, path: str) -> None:
   image = Image.open(bytes)
   image.save(path)
 
+
 def save_thumbnails(
         driver: webdriver.Chrome,
         url: str,
         out_dir: str,
         thumb_url: str = '',
-        file_name_option: int = 1) -> None:
+        file_name_option: str = '') -> None:
   """Webページ上のサムネイル画像を保存する
   -----
   driver
@@ -131,7 +128,15 @@ def save_thumbnails(
 
   thumb_url
     サムネイル画像URLの正規表現パターン
+
+  file_name_option
+    ファイル名オプション
+    "sn": 連番
+    "title": 動画タイトル
   """
+
+  if not file_name_option in ["sn", "title"]:
+    ValueError(f"Invalid value: file_name_option={file_name_option}")
 
   global g_file_index, g_total_count, g_saved_count
 
@@ -167,14 +172,17 @@ def save_thumbnails(
       link = img.find_element(By.XPATH, '../..').get_attribute('href')
 
       # 保存先のファイルパスを取得
-      if file_name_option == FileNameOptions.MOVIE_TITLE:
-        file_name = f"{title}{ext}"
-        file_name = re.sub(r'[\\|/|:|?|*|"|<|>|\|]', '_', file_name)  # 違反文字を_に置換
+      if file_name_option == "sn":
+        # 連番
+        file_name = f"{g_file_index}{ext}"
         path = os.path.join(out_dir, file_name)
         path = get_unduplicate_path(path)
-        
+
       else:
-        file_name = f"{g_file_index}{ext}"
+        # 動画タイトル
+        file_name = f"{title}{ext}"
+        file_name = re.sub(r'[\\|/|:|?|*|"|<|>|\|]',
+                           '_', file_name)  # 違反文字を_に置換
         path = os.path.join(out_dir, file_name)
         path = get_unduplicate_path(path)
 
@@ -184,59 +192,26 @@ def save_thumbnails(
       try:
         sleep(0.2)  # 403対策
         download_file(url, path)
-        Log.print(f"SAVE \"{path}\" [{title}]({link})", LogLebel.INFO)
+        Log.print(f"SAVE \"{path}\" <{link}>", LogLebel.INFO)
         g_file_index += 1
         g_saved_count += 1
       except Exception as e:
         Log.print(e, LogLebel.ERROR)
 
 
-def get_page_list(driver: webdriver.Chrome, url: str) -> list:
-  """ページネーションされたページ番号のリストを取得する
-  ---
-  driver
-    seleniumのChromeドライバ
-
-  url
-    ページURL
-
-  return
-    ページ番号のリスト
-  """
-
-  page_list: list = []
-
-  # HTMLを取得
-  try:
-    Log.print(f"GET \"{url}\"", LogLebel.INFO)
-    sleep(0.2)  # 403対策
-    driver.get(url)
-    WebDriverWait(driver, 3).until(EC.presence_of_all_elements_located)
-
-  except TimeoutException as e:
-    Log.print(e, LogLebel.ERROR)
-    return page_list
-
-  # ページ番号を追加
-  li_list = driver.find_element(By.CLASS_NAME, 'pagination').find_elements(By.TAG_NAME, 'li')
-  for li in li_list:
-      innerText = li.get_attribute("innerText")
-      if innerText.isdecimal():
-        page_list.append(int(innerText))
-        
-  return page_list
-
-
 def main(args) -> None:
   # コマンドライン引数
-  query = args.query
+  search_query = args.search_query
+  order_by = args.order_by
   start_page = int(args.start_page)
   end_page = int(args.end_page)
-  file_name_option = int(args.file_name_option)
+  file_name_option = args.file_name_option
+  headless = bool(args.headless)
 
   # Chrome起動オプション
   options = webdriver.ChromeOptions()
-  # options.add_argument('--headless')  # ウィンドウ非表示
+  if headless:
+    options.add_argument('--headless')  # ウィンドウ非表示
   options.page_load_strategy = "eager"  # DOMを読み込んだら即続行
 
   # uBlock Origin拡張機能
@@ -246,8 +221,11 @@ def main(args) -> None:
   driver = webdriver.Chrome(options=options)
 
   # 出力先フォルダを作成
-  today = dt.today().strftime('%Y-%m-%d')
-  out_dir = os.path.join("out", today, f"{query}_{start_page}_{end_page}")
+  out_dir = os.path.join("out", 
+    dt.today().strftime('%Y-%m-%d'), 
+    f"{search_query}_{start_page}_{end_page}")
+  if order_by:
+    out_dir += f"_order_by_{order_by}"
   if (not os.path.exists(out_dir)):
     os.makedirs(out_dir)
 
@@ -257,10 +235,15 @@ def main(args) -> None:
   print(f'create "{log_file}"')
 
   # すべてのページのサムネイル画像を保存する
-  base_url = SEARCH_URL.format(args.query)
+  base_url = BASE_URL
+  if search_query:
+    base_url += f"&search_query={search_query}"
+  if order_by:
+    base_url += f"&o={order_by}"
+
   for page in range(start_page, end_page + 1):
-    print(f'chrawling ... page.{page}')
     page_url = base_url + f"&page={page}"
+    print(f'chrawling <{page_url}>')
     save_thumbnails(driver, page_url, out_dir, THUMBNAIL_URL, file_name_option)
 
   # Chrome終了
@@ -278,9 +261,14 @@ def main(args) -> None:
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(
       description="TOKYO Motionのサムネイル画像をダウンロードします")
-  parser.add_argument("-q", "--query", required=True, help="検索文字列")
-  parser.add_argument("-f", "--file-name-option", help="ファイル名オプション (1:連番(default), 2:動画タイトル)", default=1)
+  parser.add_argument("-q", "--search-query", help="検索文字列", required=True)
+  parser.add_argument("-f", "--file-name-option",
+                      help="ファイル名オプション (sn:連番, title:動画タイトル)", default="title")
   parser.add_argument("-s", "--start-page", help="開始ページ番号", default=1)
   parser.add_argument("-e", "--end-page", help="終了ページ番号", default=1)
+  parser.add_argument(
+      "-o", "--order-by", help="ソート順 (bw:再生日時, mr:アップロード時間, mv:閲覧回数, md:コメント数, tr:人気, tf:お気に入り, lg:再生時間", default=None)
+  parser.add_argument("--headless", help="ブラウザ非表示", action="store_true")
+
   args = parser.parse_args()
   main(args)
