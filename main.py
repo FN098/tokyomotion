@@ -71,7 +71,7 @@ def get_unduplicate_path(path: str) -> str:
     """
 
     dst_path = path
-    for i in range(9999):
+    for i in range(2, 999):
       if os.path.exists(dst_path):
           # フルパスから「フルパスタイトル」と「拡張子」を分割
           title, ext = os.path.splitext(dst_path)
@@ -111,10 +111,10 @@ def download_file(url: str, path: str) -> None:
 
 def save_thumbnails(
         driver: webdriver.Chrome,
-        url: str,
+        img_url: str,
         out_dir: str,
         thumb_url: str = '',
-        file_name_option: str = '') -> None:
+        with_title: bool = False) -> None:
   """Webページ上のサムネイル画像を保存する
   -----
   driver
@@ -129,70 +129,59 @@ def save_thumbnails(
   thumb_url
     サムネイル画像URLの正規表現パターン
 
-  file_name_option
-    ファイル名オプション
-    "sn": 連番
-    "title": 動画タイトル
+  with_title
+    ファイル名にタイトル追加
   """
-
-  if not file_name_option in ["sn", "title"]:
-    ValueError(f"Invalid value: file_name_option={file_name_option}")
 
   global g_file_index, g_total_count, g_saved_count
 
-  # HTMLを取得
+  # HTML
   try:
-    Log.print(f"GET \"{url}\"", LogLebel.INFO)
+    Log.print(f"GET \"{img_url}\"", LogLebel.INFO)
     sleep(0.2)  # 403対策
-    driver.get(url)
-    WebDriverWait(driver, 3).until(EC.presence_of_all_elements_located)
-
+    driver.get(img_url)
   except TimeoutException as e:
     Log.print(e, LogLebel.ERROR)
     return
 
-  # サムネイル画像要素を取得
+  # 画像要素
   img_list = driver.find_elements(By.TAG_NAME, 'img')
-
   for img in img_list:
       # 画像URL
-      url = img.get_attribute('src')
+      img_url = img.get_attribute('src')
 
-      # 画像URLが存在しない、または目的のURLでなければスキップ
-      if (not url) or (thumb_url and not re.match(thumb_url, url)):
+      # 対象外の画像は無視
+      if (not img_url) or (thumb_url and not re.match(thumb_url, img_url)):
         continue
 
-      # 画像ファイル拡張子
-      _, ext = os.path.splitext(url)
-
-      # 動画タイトル
-      title = img.get_attribute('title')
+      # 拡張子
+      _, ext = os.path.splitext(img_url)
 
       # 動画リンク
       link = img.find_element(By.XPATH, '../..').get_attribute('href')
 
-      # 保存先のファイルパスを取得
-      if file_name_option == "sn":
-        # 連番
-        file_name = f"{g_file_index}{ext}"
-        path = os.path.join(out_dir, file_name)
-        path = get_unduplicate_path(path)
+      # 動画タイトル
+      title = img.get_attribute('title')
 
+      # ファイル名
+      if with_title:
+        extra = re.sub(r'[\\|/|:|?|*|"|<|>|\|]',
+                           '_', title)  # 違反文字を_に置換
       else:
-        # 動画タイトル
-        file_name = f"{title}{ext}"
-        file_name = re.sub(r'[\\|/|:|?|*|"|<|>|\|]',
-                           '_', file_name)  # 違反文字を_に置換
-        path = os.path.join(out_dir, file_name)
-        path = get_unduplicate_path(path)
+        extra = ''
+      file_name = f"{g_file_index}_{extra}{ext}"
 
-      # 画像をダウンロード
-      Log.print(f"GET \"{url}\"", LogLebel.INFO)
-      g_total_count += 1
+      # ファイルパス
+      file_path = os.path.join(out_dir, file_name)
+      file_path = get_unduplicate_path(file_path)
+
+      # 画像ファイル
+      Log.print(f"GET \"{img_url}\"", LogLebel.INFO)
       try:
+        g_total_count += 1
         sleep(0.2)  # 403対策
-        download_file(url, path)
-        Log.print(f"SAVE \"{path}\" <{link}>", LogLebel.INFO)
+        download_file(img_url, file_path)
+        Log.print(f"SAVE \"{file_path}\" <{link}>", LogLebel.INFO)
         g_file_index += 1
         g_saved_count += 1
       except Exception as e:
@@ -205,52 +194,49 @@ def main(args) -> None:
   order_by = args.order_by
   start_page = int(args.start_page)
   end_page = int(args.end_page)
-  file_name_option = args.file_name_option
-  headless = bool(args.headless)
+  headless = args.headless
+  with_title = args.with_title
 
   # Chrome起動オプション
   options = webdriver.ChromeOptions()
   if headless:
     options.add_argument('--headless')  # ウィンドウ非表示
-  options.page_load_strategy = "eager"  # DOMを読み込んだら即続行
-
-  # uBlock Origin拡張機能
-  options.add_argument(f'load-extension={U_BLOCK_ORIGIN_PATH}')
+  options.page_load_strategy = "eager"  # DOM構築後すぐにダウンロード
+  options.add_argument(f'load-extension={U_BLOCK_ORIGIN_PATH}')  # uBlock Origin拡張機能
 
   # Chrome起動
   driver = webdriver.Chrome(options=options)
 
-  # 出力先フォルダを作成
-  out_dir = os.path.join("out", 
-    dt.today().strftime('%Y-%m-%d'), 
-    f"{search_query}_{start_page}_{end_page}")
-  if order_by:
-    out_dir += f"_order_by_{order_by}"
+  # 出力先フォルダ
+  dir_name = dt.today().strftime('%Y-%m-%d')
+  out_dir = os.path.join("out", dir_name)
+  out_dir = get_unduplicate_path(out_dir)
   if (not os.path.exists(out_dir)):
     os.makedirs(out_dir)
 
-  # ログファイルオープン
+  # ログファイル作成
   log_file = os.path.join(out_dir, LOG_FILE_NAME)
   Log.open(log_file)
   print(f'create "{log_file}"')
 
-  # すべてのページのサムネイル画像を保存する
+  # URL作成
   base_url = BASE_URL
   if search_query:
     base_url += f"&search_query={search_query}"
   if order_by:
     base_url += f"&o={order_by}"
 
+  # サムネイル保存
   for page in range(start_page, end_page + 1):
     page_url = base_url + f"&page={page}"
     print(f'chrawling <{page_url}>')
-    save_thumbnails(driver, page_url, out_dir, THUMBNAIL_URL, file_name_option)
+    save_thumbnails(driver, page_url, out_dir, THUMBNAIL_URL, with_title)
 
   # Chrome終了
   driver.quit()
 
-  # ログファイルクローズ
-  Log.print(f"DOWNLOADED {g_saved_count} of {g_total_count} FILES")
+  # ログファイル終了
+  Log.print(f"DOWNLOAD {g_saved_count} of {g_total_count} FILES")
   Log.close()
 
   # 終了
@@ -262,13 +248,12 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser(
       description="TOKYO Motionのサムネイル画像をダウンロードします")
   parser.add_argument("-q", "--search-query", help="検索文字列", required=True)
-  parser.add_argument("-f", "--file-name-option",
-                      help="ファイル名オプション (sn:連番, title:動画タイトル)", default="title")
   parser.add_argument("-s", "--start-page", help="開始ページ番号", default=1)
   parser.add_argument("-e", "--end-page", help="終了ページ番号", default=1)
   parser.add_argument(
       "-o", "--order-by", help="ソート順 (bw:再生日時, mr:アップロード時間, mv:閲覧回数, md:コメント数, tr:人気, tf:お気に入り, lg:再生時間", default=None)
   parser.add_argument("--headless", help="ブラウザ非表示", action="store_true")
+  parser.add_argument("--with-title", help="ファイル名に動画タイトルを追加", action="store_true")
 
   args = parser.parse_args()
   main(args)
