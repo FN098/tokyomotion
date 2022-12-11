@@ -49,7 +49,6 @@ class Log:
     @classmethod
     def open(cls, file):
       cls._file = open(file, mode="w", encoding="utf-8")
-      print(f'create "{file}"')
 
     @classmethod
     def close(cls):
@@ -255,10 +254,12 @@ def main(args) -> None:
   # ログファイルオープン
   log_file = os.path.join(out_dir, LOG_FILE_NAME)
   Log.open(log_file)
+  print(f'create "{log_file}"')
 
   # すべてのページのサムネイル画像を保存する
   base_url = SEARCH_URL.format(args.query)
   for page in range(start_page, end_page + 1):
+    print(f'chrawling ... page.{page}')
     page_url = base_url + f"&page={page}"
     save_thumbnails(driver, page_url, out_dir, THUMBNAIL_URL, file_name_option)
 
@@ -266,7 +267,7 @@ def main(args) -> None:
   driver.quit()
 
   # ログファイルクローズ
-  Log.print(f"done ({g_saved_count} of {g_total_count})")
+  Log.print(f"DOWNLOADED {g_saved_count} of {g_total_count} FILES")
   Log.close()
 
   # 終了
