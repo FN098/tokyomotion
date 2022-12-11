@@ -18,7 +18,7 @@ import argparse
 
 BASE_URL = "https://www.tokyomotion.net/search?search_type=videos&type=public"
 THUMBNAIL_URL = "https://cdn.tokyo-motion.net/media/videos"
-LOG_FILE_NAME = "download.log"
+LOG_FILE_NAME = "#download.log"
 U_BLOCK_ORIGIN_PATH = os.path.join(os.getenv(
     'LOCALAPPDATA'), r"Google\Chrome\User Data\Profile 1\Extensions\cjpalhdlnbpafiamejdnhcphjbkeiagm\1.45.2_0")
 
@@ -88,17 +88,18 @@ def get_unduplicate_path(path: str) -> str:
     raise Exception("適切なパス名を取得できません")
 
 
-def download_file(url: str, path: str) -> None:
-  """ファイルをダウンロードする
+def download_image(url: str, path: str) -> None:
+  """画像をダウンロードする
   -----
   url
-    ファイルのURL
+    画像ファイルのURL
   
   path
     保存先のパス名
   """
 
   # ファイルをダウンロード
+  sleep(0.2)  # 403対策
   response = requests.get(url)
   if not response.ok:
     raise Exception(f"BAD STATUS [{response.status_code}]")
@@ -111,7 +112,7 @@ def download_file(url: str, path: str) -> None:
 
 def save_thumbnails(
         driver: webdriver.Chrome,
-        img_url: str,
+        url: str,
         out_dir: str,
         thumb_url: str = '',
         with_title: bool = False) -> None:
@@ -136,56 +137,54 @@ def save_thumbnails(
   global g_file_index, g_total_count, g_saved_count
 
   # HTML
+  Log.print(f"GET \"{url}\"", LogLebel.INFO)
   try:
-    Log.print(f"GET \"{img_url}\"", LogLebel.INFO)
     sleep(0.2)  # 403対策
-    driver.get(img_url)
+    driver.get(url)
   except TimeoutException as e:
     Log.print(e, LogLebel.ERROR)
     return
 
-  # 画像要素
+  # 画像
   img_list = driver.find_elements(By.TAG_NAME, 'img')
   for img in img_list:
-      # 画像URL
-      img_url = img.get_attribute('src')
+    # 画像URL
+    img_url = img.get_attribute('src')
 
-      # 対象外の画像は無視
-      if (not img_url) or (thumb_url and not re.match(thumb_url, img_url)):
-        continue
+    # サムネイル以外の画像は無視
+    if (not img_url) or (thumb_url and not re.match(thumb_url, img_url)):
+      continue
 
-      # 拡張子
-      _, ext = os.path.splitext(img_url)
+    # 動画リンク
+    link = img.find_element(By.XPATH, '../..').get_attribute('href')
 
-      # 動画リンク
-      link = img.find_element(By.XPATH, '../..').get_attribute('href')
+    # 動画タイトル
+    title = img.get_attribute('title')
 
-      # 動画タイトル
-      title = img.get_attribute('title')
+    # ファイル名
+    if with_title:
+      extra = re.sub(r'[\\|/|:|?|*|"|<|>|\|]',
+                          '_', title)  # 違反文字を_に置換
+    else:
+      extra = ''
+    _, ext = os.path.splitext(img_url)
+    file_name = f"{g_file_index}_{extra}{ext}"
 
-      # ファイル名
-      if with_title:
-        extra = re.sub(r'[\\|/|:|?|*|"|<|>|\|]',
-                           '_', title)  # 違反文字を_に置換
-      else:
-        extra = ''
-      file_name = f"{g_file_index}_{extra}{ext}"
+    # ファイルパス
+    file_path = os.path.join(out_dir, file_name)
+    file_path = get_unduplicate_path(file_path)
 
-      # ファイルパス
-      file_path = os.path.join(out_dir, file_name)
-      file_path = get_unduplicate_path(file_path)
-
-      # 画像ファイル
-      Log.print(f"GET \"{img_url}\"", LogLebel.INFO)
-      try:
-        g_total_count += 1
-        sleep(0.2)  # 403対策
-        download_file(img_url, file_path)
-        Log.print(f"SAVE \"{file_path}\" <{link}>", LogLebel.INFO)
-        g_file_index += 1
-        g_saved_count += 1
-      except Exception as e:
-        Log.print(e, LogLebel.ERROR)
+    # ダウンロード
+    Log.print(f"GET \"{url}\"", LogLebel.INFO)
+    g_total_count += 1
+    try:
+      download_image(img_url, file_path)
+    except Exception as e:
+      Log.print(e, LogLebel.ERROR)
+      continue
+    Log.print(f"SAVE \"{file_path}\" <{link}>", LogLebel.INFO)
+    g_file_index += 1
+    g_saved_count += 1
 
 
 def main(args) -> None:
@@ -197,6 +196,18 @@ def main(args) -> None:
   headless = args.headless
   with_title = args.with_title
 
+  # 出力フォルダ
+  out_dir = os.path.join("out", dt.today().strftime('%Y-%m-%d'))
+  out_dir = get_unduplicate_path(out_dir)
+  if (not os.path.exists(out_dir)):
+    os.makedirs(out_dir)
+
+  # ログファイル
+  log_file = os.path.join(out_dir, LOG_FILE_NAME)
+  Log.open(log_file)
+  Log.print(f'ARGS: "{args}"')
+  print(f'create: "{log_file}"')
+
   # Chrome起動オプション
   options = webdriver.ChromeOptions()
   if headless:
@@ -206,18 +217,6 @@ def main(args) -> None:
 
   # Chrome起動
   driver = webdriver.Chrome(options=options)
-
-  # 出力先フォルダ
-  dir_name = dt.today().strftime('%Y-%m-%d')
-  out_dir = os.path.join("out", dir_name)
-  out_dir = get_unduplicate_path(out_dir)
-  if (not os.path.exists(out_dir)):
-    os.makedirs(out_dir)
-
-  # ログファイル作成
-  log_file = os.path.join(out_dir, LOG_FILE_NAME)
-  Log.open(log_file)
-  print(f'create "{log_file}"')
 
   # URL作成
   base_url = BASE_URL
@@ -238,10 +237,7 @@ def main(args) -> None:
   # ログファイル終了
   Log.print(f"DOWNLOAD {g_saved_count} of {g_total_count} FILES")
   Log.close()
-
-  # 終了
   print("done!")
-  return
 
 
 if __name__ == "__main__":
