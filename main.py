@@ -114,8 +114,7 @@ def save_thumbnails(
         driver: webdriver.Chrome,
         url: str,
         out_dir: str,
-        thumb_url: str = '',
-        with_title: bool = False) -> None:
+        thumb_url: str = '') -> None:
   """Webページ上のサムネイル画像を保存する
   -----
   driver
@@ -129,9 +128,6 @@ def save_thumbnails(
 
   thumb_url
     サムネイル画像URLの正規表現パターン
-
-  with_title
-    ファイル名にタイトル追加
   """
 
   global g_file_index, g_total_count, g_saved_count
@@ -162,13 +158,9 @@ def save_thumbnails(
     title = img.get_attribute('title')
 
     # ファイル名
-    if with_title:
-      extra = re.sub(r'[\\|/|:|?|*|"|<|>|\|]',
-                          '_', title)  # 違反文字を_に置換
-    else:
-      extra = ''
     _, ext = os.path.splitext(img_url)
-    file_name = f"{g_file_index}_{extra}{ext}"
+    file_name = f"{g_file_index}_{title}{ext}"
+    file_name = re.sub(r'[\\|/|:|?|*|"|<|>|\|]', '_', file_name)  # 違反文字を_で置換
 
     # ファイルパス
     file_path = os.path.join(out_dir, file_name)
@@ -194,15 +186,14 @@ def main(args) -> None:
   start_page = int(args.start_page)
   end_page = int(args.end_page)
   headless = args.headless
-  with_title = args.with_title
 
-  # 出力フォルダ
-  out_dir = os.path.join("out", dt.today().strftime('%Y-%m-%d'))
+  # 出力フォルダ作成
+  out_dir = os.path.join("out", f"{dt.now().strftime('%Y-%m-%d')}")
   out_dir = get_unduplicate_path(out_dir)
   if (not os.path.exists(out_dir)):
     os.makedirs(out_dir)
 
-  # ログファイル
+  # ログファイル作成
   log_file = os.path.join(out_dir, LOG_FILE_NAME)
   Log.open(log_file)
   Log.print(f'ARGS: "{args}"')
@@ -229,7 +220,7 @@ def main(args) -> None:
   for page in range(start_page, end_page + 1):
     page_url = base_url + f"&page={page}"
     print(f'chrawling <{page_url}>')
-    save_thumbnails(driver, page_url, out_dir, THUMBNAIL_URL, with_title)
+    save_thumbnails(driver, page_url, out_dir, THUMBNAIL_URL)
 
   # Chrome終了
   driver.quit()
@@ -246,10 +237,8 @@ if __name__ == "__main__":
   parser.add_argument("-q", "--search-query", help="検索文字列", required=True)
   parser.add_argument("-s", "--start-page", help="開始ページ番号", default=1)
   parser.add_argument("-e", "--end-page", help="終了ページ番号", default=1)
-  parser.add_argument(
-      "-o", "--order-by", help="ソート順 (bw:再生日時, mr:アップロード時間, mv:閲覧回数, md:コメント数, tr:人気, tf:お気に入り, lg:再生時間", default=None)
+  parser.add_argument("--order-by", help="ソート順 (bw:再生日時, mr:アップロード時間, mv:閲覧回数, md:コメント数, tr:人気, tf:お気に入り, lg:再生時間")
   parser.add_argument("--headless", help="ブラウザ非表示", action="store_true")
-  parser.add_argument("--with-title", help="ファイル名に動画タイトルを追加", action="store_true")
 
   args = parser.parse_args()
   main(args)
