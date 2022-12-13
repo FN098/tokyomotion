@@ -175,7 +175,7 @@ def save_thumbnails(
     file_path = get_unduplicate_path(file_path)
 
     # ダウンロード
-    Log.print(f"GET \"{url}\"", LogLebel.INFO)
+    Log.print(f"GET \"{img_url}\"", LogLebel.INFO)
     g_total_count += 1
     try:
       download_image(img_url, file_path)
